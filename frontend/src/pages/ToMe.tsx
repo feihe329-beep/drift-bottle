@@ -137,9 +137,7 @@ export function ToMe() {
   useEffect(() => {
     if (!publicClient || !address || capsules.length === 0) return
 
-    const toFetch = capsules.filter(
-      (c) => c.state === 3 || c.state === 1
-    )
+    const toFetch = capsules.filter((c) => c.state === 3)
     if (toFetch.length === 0) return
 
     let cancelled = false
@@ -191,11 +189,38 @@ export function ToMe() {
     chainId: CHAIN.id,
   })
 
+  const [justOpenedId, setJustOpenedId] = useState<bigint | null>(null)
+
+  // After tx confirms, fetch the message for the just-opened capsule immediately
   useEffect(() => {
-    if (isSuccess) queryClient.invalidateQueries()
-  }, [isSuccess, queryClient])
+    if (!isSuccess) return
+    queryClient.invalidateQueries()
+
+    if (!publicClient || !address || justOpenedId === null) return
+    const id = justOpenedId
+    ;(async () => {
+      try {
+        const cid = await publicClient.readContract({
+          address: DRIFT_BOTTLE_ADDRESS,
+          abi: DRIFT_BOTTLE_ABI,
+          functionName: 'getRecipientCID',
+          args: [id],
+          account: address,
+        })
+        setDecodedMessages((prev) => ({
+          ...prev,
+          [id.toString()]: decodeMessage(cid),
+        }))
+      } catch {
+        // Will be picked up on next refetch
+      }
+      setJustOpenedId(null)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess])
 
   const handleOpenBottle = (capsule: CapsuleWithMessage) => {
+    setJustOpenedId(capsule.id)
     writeContract({
       chain: CHAIN,
       address: DRIFT_BOTTLE_ADDRESS,
